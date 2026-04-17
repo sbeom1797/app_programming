@@ -368,7 +368,7 @@ INIT_MSG = seed_from_csv()
 # =========================
 CUSTOM_CSS = """
 .gradio-container {
-    max-width: 1240px !important;
+    max-width: 1280px !important;
     margin: 0 auto !important;
     padding-top: 24px !important;
     padding-bottom: 32px !important;
@@ -376,18 +376,20 @@ CUSTOM_CSS = """
 .hero-card {
     padding: 24px;
     border-radius: 22px;
-    background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
-    color: white;
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+    background: linear-gradient(135deg, #e0f2fe 0%, #bfdbfe 100%);
+    color: #0f172a;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
     margin-bottom: 10px;
 }
 .hero-card h1 {
     margin: 0 0 8px 0;
     font-size: 30px;
+    font-weight: 800;
+    color: #0f172a;
 }
 .hero-card p {
     margin: 0;
-    opacity: 0.92;
+    color: #1e293b;
     line-height: 1.6;
 }
 .section-note {
@@ -396,6 +398,17 @@ CUSTOM_CSS = """
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     margin-bottom: 8px;
+}
+.guide-card {
+    padding: 18px;
+    border-radius: 18px;
+    background: #f8fafc;
+    border: 1px solid #dbeafe;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+}
+.guide-card h3, .guide-card h4 {
+    margin-top: 0.4rem;
+    margin-bottom: 0.5rem;
 }
 .card {
     border-radius: 20px !important;
@@ -417,6 +430,44 @@ def build_text_inputs(prefix: str):
         gr.Number(label="구매수량", precision=0, minimum=0),
         gr.Number(label="총결제금액", precision=0, minimum=0),
     ]
+
+
+
+
+def create_example_data():
+    return (
+        "CUST_001",
+        "여성",
+        "카드",
+        "서울",
+        "Gold",
+        5,
+        14,
+        23.5,
+        29,
+        3,
+        125000
+    )
+
+
+def update_example_data():
+    return (
+        "CUST_001",
+        "남성",
+        "계좌이체",
+        "경기",
+        "Silver",
+        4,
+        20,
+        21.0,
+        31,
+        5,
+        180000
+    )
+
+
+def clear_message():
+    return ""
 
 
 theme = gr.themes.Soft(
@@ -445,112 +496,164 @@ with gr.Blocks(title="Customer CRUD Service", theme=theme, css=CUSTOM_CSS, fill_
             gr.Markdown("### 입력 규칙")
             gr.Markdown("- 만족도: 1~5\n- 최근접속시간: 0~23\n- 나이/수량/결제금액: 0 이상")
 
-    with gr.Tabs():
-        with gr.Tab("Create"):
-            gr.HTML('<div class="section-note">새 고객 데이터를 추가합니다. 모든 필드를 정확한 타입으로 입력해야 합니다.</div>')
-            with gr.Group():
-                with gr.Row():
-                    with gr.Column():
-                        c_customer_id = gr.Textbox(label="고객ID", placeholder="예: CUST_001")
-                        c_gender = gr.Textbox(label="성별", placeholder="예: 여성")
-                        c_payment_method = gr.Textbox(label="결제수단", placeholder="예: 카드")
-                        c_residence = gr.Textbox(label="거주지", placeholder="예: 서울")
-                        c_membership_grade = gr.Textbox(label="회원등급", placeholder="예: Gold")
-                    with gr.Column():
-                        c_satisfaction = gr.Number(label="만족도", precision=0, minimum=1, maximum=5)
-                        c_recent_access_hour = gr.Number(label="최근접속시간(시)", precision=0, minimum=0, maximum=23)
-                        c_preferred_temp = gr.Number(label="선호제품군_적정온도", precision=1)
-                        c_age = gr.Number(label="나이", precision=0, minimum=0)
-                        c_quantity = gr.Number(label="구매수량", precision=0, minimum=0)
-                        c_total_payment = gr.Number(label="총결제금액", precision=0, minimum=0)
+    with gr.Row():
+        with gr.Column(scale=1):
+            gr.HTML("""
+            <div class="guide-card">
+                <h3>📌 데이터 타입 가이드</h3>
+                <h4>문자열 (TEXT)</h4>
+                <ul>
+                    <li><b>고객ID</b>: 예) CUST_001</li>
+                    <li><b>성별</b>: 예) 여성 / 남성</li>
+                    <li><b>결제수단</b>: 예) 카드 / 현금 / 계좌이체</li>
+                    <li><b>거주지</b>: 예) 서울 / 경기</li>
+                    <li><b>회원등급</b>: 예) Gold / Silver / Bronze</li>
+                </ul>
+                <h4>정수 (INTEGER)</h4>
+                <ul>
+                    <li><b>만족도</b>: 1 ~ 5</li>
+                    <li><b>최근접속시간(시)</b>: 0 ~ 23</li>
+                    <li><b>나이</b>: 0 이상</li>
+                    <li><b>구매수량</b>: 0 이상</li>
+                    <li><b>총결제금액</b>: 0 이상</li>
+                </ul>
+                <h4>실수 (FLOAT)</h4>
+                <ul>
+                    <li><b>선호제품군_적정온도</b>: 소수 입력 가능 (예: 23.5)</li>
+                </ul>
+                <h4>⚠️ 입력 주의</h4>
+                <ul>
+                    <li>빈 문자열 입력 불가</li>
+                    <li>정수 칸에 소수 입력 시 오류</li>
+                    <li>타입 또는 범위를 벗어나면 즉시 오류 처리</li>
+                </ul>
+            </div>
+            """)
+        with gr.Column(scale=3):
+            with gr.Tabs():
+                with gr.Tab("Create"):
+                    gr.HTML('<div class="section-note">새 고객 데이터를 추가합니다. 모든 필드를 정확한 타입으로 입력해야 합니다.</div>')
+                    with gr.Group():
+                        with gr.Row():
+                            with gr.Column():
+                                c_customer_id = gr.Textbox(label="고객ID", placeholder="예: CUST_001")
+                                c_gender = gr.Textbox(label="성별", placeholder="예: 여성")
+                                c_payment_method = gr.Textbox(label="결제수단", placeholder="예: 카드")
+                                c_residence = gr.Textbox(label="거주지", placeholder="예: 서울")
+                                c_membership_grade = gr.Textbox(label="회원등급", placeholder="예: Gold")
+                            with gr.Column():
+                                c_satisfaction = gr.Number(label="만족도", precision=0, minimum=1, maximum=5)
+                                c_recent_access_hour = gr.Number(label="최근접속시간(시)", precision=0, minimum=0, maximum=23)
+                                c_preferred_temp = gr.Number(label="선호제품군_적정온도", precision=1)
+                                c_age = gr.Number(label="나이", precision=0, minimum=0)
+                                c_quantity = gr.Number(label="구매수량", precision=0, minimum=0)
+                                c_total_payment = gr.Number(label="총결제금액", precision=0, minimum=0)
 
-                with gr.Row():
-                    c_btn = gr.Button("생성", variant="primary", scale=1)
-                    c_clear = gr.ClearButton(
-                        components=[
-                            c_customer_id, c_gender, c_payment_method, c_residence, c_membership_grade,
-                            c_satisfaction, c_recent_access_hour, c_preferred_temp, c_age, c_quantity, c_total_payment
-                        ],
-                        value="초기화",
-                        scale=1
-                    )
-                c_out = gr.Textbox(label="결과", interactive=False)
+                        with gr.Row():
+                            c_btn = gr.Button("생성", variant="primary", scale=1)
+                            c_fill_btn = gr.Button("예시 자동 입력", variant="secondary", scale=1)
+                            c_clear = gr.ClearButton(
+                                components=[
+                                    c_customer_id, c_gender, c_payment_method, c_residence, c_membership_grade,
+                                    c_satisfaction, c_recent_access_hour, c_preferred_temp, c_age, c_quantity, c_total_payment
+                                ],
+                                value="초기화",
+                                scale=1
+                            )
+                        c_out = gr.Textbox(label="결과", interactive=False)
 
-                c_btn.click(
-                    fn=create_user,
-                    inputs=[
-                        c_customer_id, c_gender, c_payment_method, c_residence, c_membership_grade,
-                        c_satisfaction, c_recent_access_hour, c_preferred_temp, c_age, c_quantity, c_total_payment
-                    ],
-                    outputs=c_out
-                )
+                        c_btn.click(
+                            fn=create_user,
+                            inputs=[
+                                c_customer_id, c_gender, c_payment_method, c_residence, c_membership_grade,
+                                c_satisfaction, c_recent_access_hour, c_preferred_temp, c_age, c_quantity, c_total_payment
+                            ],
+                            outputs=c_out
+                        )
+                        c_fill_btn.click(
+                            fn=create_example_data,
+                            inputs=[],
+                            outputs=[
+                                c_customer_id, c_gender, c_payment_method, c_residence, c_membership_grade,
+                                c_satisfaction, c_recent_access_hour, c_preferred_temp, c_age, c_quantity, c_total_payment
+                            ]
+                        )
 
-        with gr.Tab("Read"):
-            gr.HTML('<div class="section-note">customer_id로 단건 조회하거나, limit를 지정해 전체 목록을 확인할 수 있습니다.</div>')
-            with gr.Row():
-                with gr.Column():
-                    gr.Markdown("#### 단건 조회")
+                with gr.Tab("Read"):
+                    gr.HTML('<div class="section-note">고객ID로 단건 조회하거나, 조회건수를 지정해 전체 목록을 확인할 수 있습니다.</div>')
                     with gr.Row():
-                        r_customer_id = gr.Textbox(label="고객ID", placeholder="조회할 고객 ID")
-                        r_btn = gr.Button("단건 조회", variant="primary")
-                    r_out = gr.Dataframe(label="조회 결과", interactive=False, wrap=True)
+                        with gr.Column():
+                            gr.Markdown("#### 단건 조회")
+                            with gr.Row():
+                                r_customer_id = gr.Textbox(label="고객ID", placeholder="조회할 고객 ID")
+                                r_btn = gr.Button("단건 조회", variant="primary")
+                            r_out = gr.Dataframe(label="조회 결과", interactive=False, wrap=True)
 
-                with gr.Column():
-                    gr.Markdown("#### 전체 조회")
+                        with gr.Column():
+                            gr.Markdown("#### 전체 조회")
+                            with gr.Row():
+                                r_limit = gr.Number(value=10, label="조회건수", precision=0, minimum=1)
+                                r_all_btn = gr.Button("전체 조회")
+                            r_all_out = gr.Dataframe(label="전체 결과", interactive=False, wrap=True)
+
+                    r_btn.click(fn=read_user, inputs=r_customer_id, outputs=r_out)
+                    r_all_btn.click(fn=read_all, inputs=r_limit, outputs=r_all_out)
+
+                with gr.Tab("Update"):
+                    gr.HTML('<div class="section-note">수정할 필드만 입력하면 됩니다. 비워둔 값은 그대로 유지됩니다.</div>')
+                    with gr.Group():
+                        with gr.Row():
+                            with gr.Column():
+                                u_customer_id = gr.Textbox(label="고객ID", placeholder="수정할 고객 ID")
+                                u_gender = gr.Textbox(label="성별", placeholder="변경 시 입력")
+                                u_payment_method = gr.Textbox(label="결제수단", placeholder="변경 시 입력")
+                                u_residence = gr.Textbox(label="거주지", placeholder="변경 시 입력")
+                                u_membership_grade = gr.Textbox(label="회원등급", placeholder="변경 시 입력")
+                            with gr.Column():
+                                u_satisfaction = gr.Number(label="만족도", precision=0, minimum=1, maximum=5)
+                                u_recent_access_hour = gr.Number(label="최근접속시간(시)", precision=0, minimum=0, maximum=23)
+                                u_preferred_temp = gr.Number(label="선호제품군_적정온도", precision=1)
+                                u_age = gr.Number(label="나이", precision=0, minimum=0)
+                                u_quantity = gr.Number(label="구매수량", precision=0, minimum=0)
+                                u_total_payment = gr.Number(label="총결제금액", precision=0, minimum=0)
+
+                        with gr.Row():
+                            u_btn = gr.Button("수정", variant="primary", scale=1)
+                            u_fill_btn = gr.Button("예시 자동 입력", variant="secondary", scale=1)
+                            u_clear = gr.ClearButton(
+                                components=[
+                                    u_customer_id, u_gender, u_payment_method, u_residence, u_membership_grade,
+                                    u_satisfaction, u_recent_access_hour, u_preferred_temp, u_age, u_quantity, u_total_payment
+                                ],
+                                value="초기화",
+                                scale=1
+                            )
+                        u_out = gr.Textbox(label="결과", interactive=False)
+
+                        u_btn.click(
+                            fn=update_user,
+                            inputs=[
+                                u_customer_id, u_gender, u_payment_method, u_residence, u_membership_grade,
+                                u_satisfaction, u_recent_access_hour, u_preferred_temp, u_age, u_quantity, u_total_payment
+                            ],
+                            outputs=u_out
+                        )
+                        u_fill_btn.click(
+                            fn=update_example_data,
+                            inputs=[],
+                            outputs=[
+                                u_customer_id, u_gender, u_payment_method, u_residence, u_membership_grade,
+                                u_satisfaction, u_recent_access_hour, u_preferred_temp, u_age, u_quantity, u_total_payment
+                            ]
+                        )
+
+                with gr.Tab("Delete"):
+                    gr.HTML('<div class="section-note">고객ID 기준으로 데이터를 삭제합니다. 삭제 후 복구되지 않습니다.</div>')
                     with gr.Row():
-                        r_limit = gr.Number(value=10, label="조회건수", precision=0, minimum=1)
-                        r_all_btn = gr.Button("전체 조회")
-                    r_all_out = gr.Dataframe(label="전체 결과", interactive=False, wrap=True)
-
-            r_btn.click(fn=read_user, inputs=r_customer_id, outputs=r_out)
-            r_all_btn.click(fn=read_all, inputs=r_limit, outputs=r_all_out)
-
-        with gr.Tab("Update"):
-            gr.HTML('<div class="section-note">수정할 필드만 입력하면 됩니다. 비워둔 값은 그대로 유지됩니다.</div>')
-            with gr.Group():
-                with gr.Row():
-                    with gr.Column():
-                        u_customer_id = gr.Textbox(label="고객ID", placeholder="수정할 고객 ID")
-                        u_gender = gr.Textbox(label="성별", placeholder="변경 시 입력")
-                        u_payment_method = gr.Textbox(label="결제수단", placeholder="변경 시 입력")
-                        u_residence = gr.Textbox(label="거주지", placeholder="변경 시 입력")
-                        u_membership_grade = gr.Textbox(label="회원등급", placeholder="변경 시 입력")
-                    with gr.Column():
-                        u_satisfaction = gr.Number(label="만족도", precision=0, minimum=1, maximum=5)
-                        u_recent_access_hour = gr.Number(label="최근접속시간(시)", precision=0, minimum=0, maximum=23)
-                        u_preferred_temp = gr.Number(label="선호제품군_적정온도", precision=1)
-                        u_age = gr.Number(label="나이", precision=0, minimum=0)
-                        u_quantity = gr.Number(label="구매수량", precision=0, minimum=0)
-                        u_total_payment = gr.Number(label="총결제금액", precision=0, minimum=0)
-
-                with gr.Row():
-                    u_btn = gr.Button("수정", variant="primary", scale=1)
-                    u_clear = gr.ClearButton(
-                        components=[
-                            u_customer_id, u_gender, u_payment_method, u_residence, u_membership_grade,
-                            u_satisfaction, u_recent_access_hour, u_preferred_temp, u_age, u_quantity, u_total_payment
-                        ],
-                        value="초기화",
-                        scale=1
-                    )
-                u_out = gr.Textbox(label="결과", interactive=False)
-
-                u_btn.click(
-                    fn=update_user,
-                    inputs=[
-                        u_customer_id, u_gender, u_payment_method, u_residence, u_membership_grade,
-                        u_satisfaction, u_recent_access_hour, u_preferred_temp, u_age, u_quantity, u_total_payment
-                    ],
-                    outputs=u_out
-                )
-
-        with gr.Tab("Delete"):
-            gr.HTML('<div class="section-note">customer_id 기준으로 데이터를 삭제합니다. 삭제 후 복구되지 않습니다.</div>')
-            with gr.Row():
-                d_customer_id = gr.Textbox(label="고객ID", placeholder="삭제할 고객 ID")
-                d_btn = gr.Button("삭제", variant="stop")
-            d_out = gr.Textbox(label="결과", interactive=False)
-            d_btn.click(fn=delete_user, inputs=d_customer_id, outputs=d_out)
+                        d_customer_id = gr.Textbox(label="고객ID", placeholder="삭제할 고객 ID")
+                        d_btn = gr.Button("삭제", variant="stop")
+                    d_out = gr.Textbox(label="결과", interactive=False)
+                    d_btn.click(fn=delete_user, inputs=d_customer_id, outputs=d_out)
 
 
 if __name__ == "__main__":
