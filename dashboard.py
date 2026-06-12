@@ -1,19 +1,46 @@
-"""Streamlit dashboard for the CRM prediction FastAPI service."""
+"""Streamlit dashboard for CRM prediction models.
+
+The dashboard can call a deployed FastAPI service, but it defaults to direct
+in-process predictions so it works on Streamlit Community Cloud with only this
+repository.
+"""
 
 from __future__ import annotations
 
 import os
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 
 import pandas as pd
 import requests
 import streamlit as st
 
+from app.schemas import (
+    CustomerPredictionRequest,
+    MarketingPredictionRequest,
+    SalesQuantityPredictionRequest,
+)
+from app.service import predict_buy, predict_marketing_profit, predict_sales_quantity
+
 
 DEFAULT_API_URL = "http://127.0.0.1:8000"
+PROJECT_ROOT = Path(__file__).resolve().parent
+SALES_MODEL_PATH = PROJECT_ROOT / "models" / "product_sales_quantity_regressor.pkl"
 CUSTOMER_CATEGORIES = ["Accessories", "Bikes", "Clothing"]
 FALLBACK_SALES_CATEGORIES = ["Accessories", "Bikes", "Clothing", "Components"]
 FALLBACK_PRODUCTS = ["Mountain-200 Black, 38"]
+REGIONS = [
+    "Australia",
+    "Canada",
+    "Central",
+    "France",
+    "Germany",
+    "Northeast",
+    "Northwest",
+    "Southeast",
+    "Southwest",
+    "United Kingdom",
+]
 
 
 st.set_page_config(
@@ -26,6 +53,38 @@ st.set_page_config(
 def api_base_url() -> str:
     """Return the FastAPI base URL selected in the sidebar."""
     return st.session_state.get("api_base_url", DEFAULT_API_URL).rstrip("/")
+
+
+def response_to_dict(response: Any) -> dict[str, Any]:
+    """Convert Pydantic v1/v2 models to a plain dictionary."""
+    if hasattr(response, "model_dump"):
+        return response.model_dump()
+    return response.dict()
+
+
+def call_local_prediction(
+    endpoint: str,
+    payload: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Run predictions directly from saved model artifacts."""
+    handlers: dict[str, Callable[[Any], Any]] = {
+        "/predict/buy": lambda data: predict_buy(CustomerPredictionRequest(**data)),
+        "/predict/marketing-profit": lambda data: predict_marketing_profit(
+            MarketingPredictionRequest(**data)
+        ),
+        "/predict/sales-quantity": lambda data: predict_sales_quantity(
+            SalesQuantityPredictionRequest(**data)
+        ),
+    }
+
+    try:
+        return response_to_dict(handlers[endpoint](payload))
+    except FileNotFoundError as error:
+        st.error(str(error))
+        return None
+    except Exception as error:  # Streamlit should show model issues gracefully.
+        st.error(f"예측 중 오류가 발생했습니다: {error}")
+        return None
 
 
 def post_prediction(endpoint: str, payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -41,11 +100,20 @@ def post_prediction(endpoint: str, payload: dict[str, Any]) -> dict[str, Any] | 
     return response.json()
 
 
+def predict(endpoint: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Dispatch prediction calls according to the selected runtime mode."""
+    if st.session_state.get("prediction_mode") == "FastAPI 서버":
+        return post_prediction(endpoint, payload)
+    return call_local_prediction(endpoint, payload)
+
+
 def get_static_image_url(image_url: str) -> str:
     """Build an absolute image URL from a relative static path."""
     if image_url.startswith("http"):
         return image_url
-    return f"{api_base_url()}{image_url}"
+    if st.session_state.get("prediction_mode") == "FastAPI 서버":
+        return f"{api_base_url()}{image_url}"
+    return str(PROJECT_ROOT / image_url.lstrip("/").replace("static/figures", "outputs/figures"))
 
 
 @st.cache_data
@@ -111,18 +179,7 @@ def customer_payload(prefix: str = "") -> dict[str, Any]:
 
     main_region = st.selectbox(
         "주요 구매 지역",
-        [
-            "Australia",
-            "Canada",
-            "Central",
-            "France",
-            "Germany",
-            "Northeast",
-            "Northwest",
-            "Southeast",
-            "Southwest",
-            "United Kingdom",
-        ],
+        REGIONS,
         index=0,
         key=f"{prefix}main_region",
     )
@@ -144,7 +201,7 @@ def render_buy_tab() -> None:
     payload = customer_payload("buy_")
 
     if st.button("구매 여부 예측하기", type="primary", key="buy_submit"):
-        result = post_prediction("/predict/buy", payload)
+        result = predict("/predict/buy", payload)
         if not result:
             return
 
@@ -166,11 +223,13 @@ def render_buy_tab() -> None:
             )
             table_col, image_col = st.columns([1, 1])
             table_col.dataframe(matrix_df, use_container_width=True)
-            image_col.image(
-                get_static_image_url(matrix_info["image_url"]),
-                caption="분류 모델 혼동 행렬",
-                use_container_width=True,
-            )
+            image_path = get_static_image_url(matrix_info["image_url"])
+            if Path(image_path).exists() or image_path.startswith("http"):
+                image_col.image(
+                    image_path,
+                    caption="분류 모델 혼동 행렬",
+                    use_container_width=True,
+                )
 
 
 def render_sales_tab() -> None:
@@ -180,10 +239,7 @@ def render_sales_tab() -> None:
     left, middle, right = st.columns(3)
     with left:
         year = st.number_input("연도", min_value=2000, max_value=2100, value=2020, step=1)
-        region = st.selectbox(
-            "지역",
-            ["Australia", "Canada", "Central", "France", "Germany", "Northeast", "Northwest", "Southeast", "Southwest", "United Kingdom"],
-        )
+        region = st.selectbox("지역", REGIONS)
     with middle:
         month = st.number_input("월", min_value=1, max_value=12, value=12, step=1)
         category = st.selectbox("카테고리", sales_categories)
@@ -198,8 +254,15 @@ def render_sales_tab() -> None:
         "product": product,
     }
 
+    if not SALES_MODEL_PATH.exists() and st.session_state.get("prediction_mode") != "FastAPI 서버":
+        st.warning(
+            "판매량 예측 모델은 GitHub 100MB 제한 때문에 저장소에 포함하지 않았습니다. "
+            "이 탭까지 배포하려면 FastAPI 서버를 연결하거나 Git LFS로 모델을 올려야 합니다."
+        )
+        return
+
     if st.button("판매량 예측하기", type="primary", key="sales_submit"):
-        result = post_prediction("/predict/sales-quantity", payload)
+        result = predict("/predict/sales-quantity", payload)
         if not result:
             return
         st.metric("예상 판매량", result["predicted_quantity"])
@@ -219,7 +282,7 @@ def render_profit_tab() -> None:
     payload["marketing_cost"] = marketing_cost
 
     if st.button("기대이익 계산하기", type="primary", key="profit_submit"):
-        result = post_prediction("/predict/marketing-profit", payload)
+        result = predict("/predict/marketing-profit", payload)
         if not result:
             return
 
@@ -242,23 +305,37 @@ def translate_action(action: str) -> str:
     return translations.get(action, action)
 
 
+def render_sidebar() -> None:
+    """Render runtime configuration."""
+    st.sidebar.header("실행 방식")
+    st.sidebar.radio(
+        "예측 실행 위치",
+        ["내장 모델", "FastAPI 서버"],
+        index=0,
+        key="prediction_mode",
+    )
+
+    if st.session_state.get("prediction_mode") == "FastAPI 서버":
+        configured_url = os.getenv("CRM_API_URL", DEFAULT_API_URL)
+        st.sidebar.text_input("FastAPI URL", configured_url, key="api_base_url")
+
+        try:
+            health = requests.get(f"{api_base_url()}/", timeout=5)
+            if health.ok:
+                st.sidebar.success("FastAPI 연결됨")
+            else:
+                st.sidebar.warning("FastAPI 응답 오류")
+        except requests.RequestException:
+            st.sidebar.error("FastAPI 연결 안 됨")
+    else:
+        st.sidebar.success("Streamlit에서 모델 직접 실행 중")
+
+
 def main() -> None:
     """Render the Streamlit dashboard."""
     st.title("CRM 예측 대시보드")
-    st.caption("FastAPI 모델 결과를 입력 폼과 차트로 확인하는 시연용 대시보드")
-
-    st.sidebar.header("서버 연결")
-    configured_url = os.getenv("CRM_API_URL", DEFAULT_API_URL)
-    st.sidebar.text_input("FastAPI URL", configured_url, key="api_base_url")
-
-    try:
-        health = requests.get(f"{api_base_url()}/", timeout=5)
-        if health.ok:
-            st.sidebar.success("FastAPI 연결됨")
-        else:
-            st.sidebar.warning("FastAPI 응답 오류")
-    except requests.RequestException:
-        st.sidebar.error("FastAPI 연결 안 됨")
+    st.caption("고객 구매 가능성, 기대이익, 상품 판매량 예측을 확인하는 대시보드")
+    render_sidebar()
 
     buy_tab, sales_tab, profit_tab = st.tabs(
         ["구매 여부 예측", "판매량 예측", "기대이익 분석"]

@@ -1,70 +1,90 @@
-# AI 기반 CRM 마케팅 비용 최적화
+# CRM Marketing Optimization
 
-AdventureWorks Sales 데이터를 이용해 고객별 구매확률과 예상 구매금액을 예측하고, 마케팅 비용을 차감한 기대수익이 높은 고객에게 예산을 집중하는 대학교 기말과제용 프로젝트입니다.
-
-## 프로젝트 목표
-
-모든 고객에게 동일하게 쿠폰이나 광고를 보내면 구매 가능성이 낮거나 예상 구매금액이 작은 고객에게도 비용이 쓰입니다. 이 프로젝트는 RFM 지표와 고객 구매 이력을 기반으로 구매확률과 예상 구매금액을 예측한 뒤, 아래 공식으로 고객별 기대수익을 계산합니다.
+AdventureWorks Sales 데이터를 사용해 고객 구매 가능성, 예상 구매 금액, 기대이익을 예측하는 CRM 마케팅 최적화 프로젝트입니다.
 
 ```text
-Expected_Profit = Purchase_Probability × Predicted_Sales_Amount - Marketing_Cost
+Expected Profit = Purchase Probability * Predicted Sales Amount - Marketing Cost
 ```
 
-`Marketing_Cost`는 쿠폰 또는 광고 발송 비용이며 기본값은 5,000으로 가정합니다. 최종 마케팅 대상은 구매확률 순위가 아니라 기대수익이 높은 순서로 선정합니다.
+## 주요 기능
 
-## 데이터 준비
+- 고객 구매 여부 예측
+- 고객별 기대이익 계산
+- 기대이익 기반 마케팅 대상 선정
+- 상품/지역별 판매량 예측
+- Streamlit 대시보드
+- FastAPI 예측 API
 
-Excel 파일을 아래 위치에 넣어주세요.
+## Streamlit Cloud 배포
+
+Streamlit Community Cloud에서 아래 값으로 배포하면 됩니다.
 
 ```text
-data/raw/AdventureWorks Sales (1).xlsx
+Repository: sbeom1797/app_programming
+Branch: main
+Main file path: dashboard.py
 ```
 
-필수 시트:
+배포된 대시보드는 기본적으로 저장소 안의 모델 파일을 직접 사용합니다. 별도 FastAPI 서버 없이도 `구매 여부 예측`과 `기대이익 분석` 탭이 동작합니다.
 
-- `Sales_data`
-- `Customer_data`
-- `Product_data`
-- `Date_data`
-- `Sales Territory_data`
+단, `models/product_sales_quantity_regressor.pkl`은 GitHub 100MB 제한 때문에 저장소에 포함하지 않았습니다. 그래서 Streamlit Cloud의 `판매량 예측` 탭은 안내 메시지를 표시합니다. 이 탭까지 배포하려면 해당 모델을 Git LFS로 올리거나 FastAPI 서버를 별도로 배포한 뒤 대시보드에서 `FastAPI 서버` 모드를 선택하세요.
 
-## 설치
+## 로컬 실행
+
+패키지 설치:
 
 ```powershell
-.\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-## 모델 학습
-
-프로젝트 루트 폴더에서 실행합니다.
+Streamlit 실행:
 
 ```powershell
-python -m src.train_classifier
-python -m src.train_regressor
+python -m streamlit run dashboard.py --server.headless true --browser.gatherUsageStats false
 ```
 
-학습 후 생성되는 파일:
+접속 주소:
 
-- `models/rf_classifier.pkl`
-- `models/rf_regressor.pkl`
-- `models/feature_columns.pkl`
-- `data/processed/customer_features.csv`
-- `data/processed/sales_features.csv`
-- `outputs/figures/*.png`
+```text
+http://127.0.0.1:8501
+```
 
-## FastAPI 실행
+FastAPI 실행:
 
 ```powershell
-uvicorn app.main:app --reload
+python -m uvicorn app.main:app --reload
 ```
 
-브라우저에서 API 문서를 확인할 수 있습니다.
+API 문서:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-## 주요 API
+## 주요 파일
 
-- `POST /predict/marketing-profit`: 고객 RFM 정보를 입력하면 구매확률, 예상 구매금액, 기대수익, CRM 예산 액션을 반환합니다.
+- `dashboard.py`: Streamlit 대시보드
+- `app/main.py`: FastAPI 앱
+- `app/service.py`: 모델 로딩 및 예측 로직
+- `src/preprocessing.py`: 원본 Excel 병합 전처리
+- `src/make_features.py`: 고객 단위 피처 생성
+- `src/train_classifier.py`: 구매 여부 분류 모델 학습
+- `src/train_regressor.py`: 예상 구매 금액 회귀 모델 학습
+- `src/train_product_sales_quantity_regressor.py`: 상품 판매량 회귀 모델 학습
+
+## 데이터 준비
+
+원본 Excel 파일은 아래 위치에 둡니다.
+
+```text
+data/raw/AdventureWorks Sales (1).xlsx
+```
+
+필요 시 전처리부터 다시 실행합니다.
+
+```powershell
+python -m src.preprocessing
+python -m src.make_features
+python -m src.train_regressor
+python -m src.train_classifier
+```
