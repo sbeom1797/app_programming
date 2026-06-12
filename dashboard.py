@@ -147,7 +147,7 @@ def render_dashboard_summary() -> None:
     first, second, third, fourth = st.columns(4)
     first.metric("평균 구매확률", summary["avg_probability"])
     second.metric("평균 기대이익", summary["avg_profit"])
-    third.metric("추천 대상 수", summary["target_count"])
+    third.metric("상위 후보 수", summary["target_count"])
     fourth.metric("최고 기대이익", summary["best_profit"])
 
 

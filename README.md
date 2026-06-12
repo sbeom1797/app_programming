@@ -15,6 +15,16 @@ Expected Profit = Purchase Probability * Predicted Sales Amount - Marketing Cost
 - Streamlit 대시보드
 - FastAPI 예측 API
 
+## 모델링 기준
+
+과적합과 target leakage를 줄이기 위해 고객 feature와 정답 target을 시간 기준으로 분리합니다.
+
+- 입력 feature: `2020-01-01` 이전 구매 이력으로 만든 RFM/지역/카테고리 정보
+- 분류 target: `2020-01-01` 이후 실제 구매 여부
+- 회귀 target: `2020-01-01` 이후 실제 구매금액 `Future_Monetary`
+
+따라서 현재 리포트의 성능은 기존의 규칙 기반 라벨/동일 기간 누적 구매금액 예측보다 낮지만, 실제 운영 시나리오에 더 가까운 평가입니다.
+
 ## Streamlit Cloud 배포
 
 Streamlit Community Cloud에서 아래 값으로 배포하면 됩니다.

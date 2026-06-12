@@ -39,6 +39,7 @@ MODEL_PATH = MODELS_DIR / "rf_regressor.pkl"
 FEATURE_COLUMNS_PATH = MODELS_DIR / "regressor_feature_columns.pkl"
 REPORT_PATH = REPORTS_DIR / "regressor_report.txt"
 FEATURE_IMPORTANCE_PATH = FIGURES_DIR / "regressor_feature_importance.png"
+TARGET_COLUMNS = ["Buy", "Buy_Label", "Future_Frequency", "Future_Monetary", "Future_Quantity"]
 
 
 def load_feature_data() -> pd.DataFrame:
@@ -57,17 +58,17 @@ def load_feature_data() -> pd.DataFrame:
 def find_target_column(df: pd.DataFrame) -> str:
     """고객별 예상 구매금액 target 컬럼을 찾습니다.
 
-    고객 단위 마케팅 최적화에서는 한 번의 평균 주문금액보다 고객별 예상 매출 규모가
-    더 중요합니다. 따라서 Monetary를 우선 target으로 사용합니다.
+    고객 단위 마케팅 최적화에서는 현재까지 누적 구매금액이 아니라
+    기준일 이후 미래 구매금액을 target으로 사용합니다.
     """
-    candidates = ["Monetary", "avg_order_amount", "Average_Order_Amount", "AvgOrderAmount"]
+    candidates = ["Future_Monetary", "future_monetary"]
     for column in candidates:
         if column in df.columns:
             return column
 
     raise KeyError(
         "예상 구매금액 target 컬럼을 찾을 수 없습니다. "
-        "customer_features.csv에 avg_order_amount 또는 Monetary 컬럼이 필요합니다."
+        "customer_features.csv에 Future_Monetary 컬럼이 필요합니다."
     )
 
 
@@ -87,8 +88,8 @@ def prepare_train_data(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, list[
     # target은 고객별 예상 구매금액입니다.
     y = pd.to_numeric(df[target_col], errors="coerce")
 
-    # 고객 ID, 분류 라벨, 회귀 target은 모델 입력에서 제외합니다.
-    exclude_columns = [target_col, "Buy", "Buy_Label"]
+    # 고객 ID, 분류 라벨, 미래 target 컬럼은 모델 입력에서 제외합니다.
+    exclude_columns = [column for column in TARGET_COLUMNS if column in df.columns]
     if customer_id_col:
         exclude_columns.append(customer_id_col)
 
@@ -113,7 +114,14 @@ def prepare_train_data(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, list[
 
 def train_model(x_train: pd.DataFrame, y_train: pd.Series) -> RandomForestRegressor:
     """RandomForestRegressor 모델을 학습합니다."""
-    model = RandomForestRegressor(random_state=42)
+    model = RandomForestRegressor(
+        n_estimators=300,
+        max_depth=10,
+        min_samples_split=30,
+        min_samples_leaf=15,
+        random_state=42,
+        n_jobs=-1,
+    )
     model.fit(x_train, y_train)
     return model
 

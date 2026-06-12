@@ -22,6 +22,7 @@ INPUT_PATH = PROJECT_ROOT / "data" / "processed" / "merged_sales.csv"
 OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "customer_features.csv"
 MODELS_DIR = PROJECT_ROOT / "models"
 FEATURE_COLUMNS_PATH = MODELS_DIR / "feature_columns.pkl"
+PREDICTION_CUTOFF_DATE = pd.Timestamp("2020-01-01")
 
 
 def find_column(df: pd.DataFrame, candidates: list[str], purpose: str) -> str:
@@ -135,7 +136,7 @@ def most_frequent_value(series: pd.Series) -> str:
 
 
 def make_customer_features(df: pd.DataFrame, columns: dict[str, str]) -> pd.DataFrame:
-    """고객별 RFM 지표와 추가 변수를 생성합니다."""
+    """고객별 과거 RFM 지표와 미래 구매 라벨/금액 target을 생성합니다."""
     customer_col = columns["customer"]
     order_col = columns["order"]
     sales_col = columns["sales"]
@@ -143,13 +144,17 @@ def make_customer_features(df: pd.DataFrame, columns: dict[str, str]) -> pd.Data
     category_col = columns["category"]
     region_col = columns["region"]
 
-    # 전체 데이터의 마지막 구매일을 기준일로 사용합니다.
-    # 예를 들어 전체 마지막 구매일이 2020-12-31이고 고객의 마지막 구매일이 2020-12-01이면
-    # Recency는 30일입니다.
-    last_date = df["_order_date"].max()
+    historical = df[df["_order_date"] < PREDICTION_CUTOFF_DATE].copy()
+    future = df[df["_order_date"] >= PREDICTION_CUTOFF_DATE].copy()
+
+    if historical.empty or future.empty:
+        raise ValueError(
+            "시간 기준 feature/target 분리에 실패했습니다. "
+            f"기준일({PREDICTION_CUTOFF_DATE.date()}) 전후 데이터가 모두 필요합니다."
+        )
 
     customer_features = (
-        df.groupby(customer_col)
+        historical.groupby(customer_col)
         .agg(
             last_purchase_date=("_order_date", "max"),
             Frequency=(order_col, "nunique"),
@@ -162,12 +167,32 @@ def make_customer_features(df: pd.DataFrame, columns: dict[str, str]) -> pd.Data
     )
 
     customer_features["Recency"] = (
-        last_date - customer_features["last_purchase_date"]
+        PREDICTION_CUTOFF_DATE - customer_features["last_purchase_date"]
     ).dt.days
 
-    # 평균 주문금액 = 총 구매금액 / 주문 횟수
+    # 평균 주문금액 = 기준일 이전 총 구매금액 / 기준일 이전 주문 횟수
     customer_features["avg_order_amount"] = (
         customer_features["Monetary"] / customer_features["Frequency"].clip(lower=1)
+    )
+
+    future_targets = (
+        future.groupby(customer_col)
+        .agg(
+            Future_Frequency=(order_col, "nunique"),
+            Future_Monetary=(sales_col, "sum"),
+            Future_Quantity=(quantity_col, "sum"),
+        )
+        .reset_index()
+    )
+
+    customer_features = customer_features.merge(
+        future_targets,
+        on=customer_col,
+        how="left",
+    )
+    customer_features[["Future_Frequency", "Future_Monetary", "Future_Quantity"]] = (
+        customer_features[["Future_Frequency", "Future_Monetary", "Future_Quantity"]]
+        .fillna(0)
     )
 
     customer_features = add_buy_label(customer_features)
@@ -176,35 +201,13 @@ def make_customer_features(df: pd.DataFrame, columns: dict[str, str]) -> pd.Data
 
 
 def add_buy_label(customer_features: pd.DataFrame) -> pd.DataFrame:
-    """Buy/Not Buy 라벨을 생성합니다.
-
-    라벨 기준:
-    - Buy = 1:
-      1. 고객의 Recency가 전체 고객 Recency의 중앙값보다 작거나 같은 고객
-         -> 최근에 구매한 고객을 의미합니다.
-      2. 고객의 Frequency가 전체 고객 Frequency의 중앙값보다 크거나 같은 고객
-         -> 자주 구매한 고객을 의미합니다.
-      3. 위 두 조건을 모두 만족하는 고객
-         -> 최근에 자주 구매했으므로 CRM 마케팅 반응 가능성이 높은 고객으로 봅니다.
-
-    - Buy = 0:
-      위 조건에 해당하지 않는 고객
-
-    이 기준은 최근에 자주 구매한 고객을 마케팅 반응 가능성이 높은 고객으로 보는
-    CRM 관점의 실습용 라벨입니다.
-    """
-    recency_median = customer_features["Recency"].median()
-    frequency_median = customer_features["Frequency"].median()
-
-    customer_features["Buy"] = (
-        (customer_features["Recency"] <= recency_median)
-        & (customer_features["Frequency"] >= frequency_median)
-    ).astype(int)
+    """미래 기간에 실제 구매가 있었는지로 Buy/Not Buy 라벨을 생성합니다."""
+    customer_features["Buy"] = (customer_features["Future_Monetary"] > 0).astype(int)
 
     print("\n[Buy Label Summary]")
     print(customer_features["Buy"].value_counts().sort_index())
-    print(f"Recency median: {recency_median:.2f}")
-    print(f"Frequency median: {frequency_median:.2f}")
+    print(f"Prediction cutoff date: {PREDICTION_CUTOFF_DATE.date()}")
+    print(f"Future buyers: {customer_features['Buy'].sum():,}")
 
     return customer_features
 
@@ -213,7 +216,16 @@ def handle_missing_values(customer_features: pd.DataFrame) -> pd.DataFrame:
     """결측치를 처리합니다."""
     result = customer_features.copy()
 
-    numeric_columns = ["Recency", "Frequency", "Monetary", "avg_order_amount", "total_quantity"]
+    numeric_columns = [
+        "Recency",
+        "Frequency",
+        "Monetary",
+        "avg_order_amount",
+        "total_quantity",
+        "Future_Frequency",
+        "Future_Monetary",
+        "Future_Quantity",
+    ]
     categorical_columns = ["favorite_category", "main_region"]
 
     for column in numeric_columns:
@@ -244,9 +256,20 @@ def save_feature_data(feature_data: pd.DataFrame) -> None:
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 모델 학습 feature는 고객 식별자와 정답 라벨 Buy를 제외한 모든 컬럼입니다.
+    # 모델 학습 feature는 고객 식별자와 미래 정답 컬럼을 제외한 과거 정보만 사용합니다.
     feature_columns = [
-        column for column in feature_data.columns if column not in ["CustomerKey", "Customer ID", "Customer", "Buy"]
+        column
+        for column in feature_data.columns
+        if column
+        not in [
+            "CustomerKey",
+            "Customer ID",
+            "Customer",
+            "Buy",
+            "Future_Frequency",
+            "Future_Monetary",
+            "Future_Quantity",
+        ]
     ]
 
     feature_data.to_csv(OUTPUT_PATH, index=False, encoding="utf-8-sig")

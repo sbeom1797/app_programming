@@ -41,6 +41,7 @@ FIGURES_DIR = PROJECT_ROOT / "outputs" / "figures"
 REPORTS_DIR = PROJECT_ROOT / "outputs" / "reports"
 
 MARKETING_COST = 5000
+TARGET_COLUMNS = ["Buy_Label", "Buy", "Future_Frequency", "Future_Monetary", "Future_Quantity"]
 
 CLASSIFIER_MODEL_PATH = MODELS_DIR / "rf_classifier.pkl"
 REGRESSOR_MODEL_PATH = MODELS_DIR / "rf_regressor.pkl"
@@ -50,6 +51,7 @@ LEGACY_FEATURE_COLUMNS_PATH = MODELS_DIR / "feature_columns.pkl"
 
 REPORT_PATH = REPORTS_DIR / "classifier_report.txt"
 TARGETS_PATH = REPORTS_DIR / "marketing_targets_expected_profit.csv"
+ALL_CUSTOMERS_PATH = REPORTS_DIR / "all_customers_expected_profit.csv"
 FEATURE_IMPORTANCE_PATH = FIGURES_DIR / "classifier_feature_importance.png"
 CONFUSION_MATRIX_PATH = FIGURES_DIR / "confusion_matrix.png"
 
@@ -80,7 +82,7 @@ def prepare_train_data(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, list[
 
     customer_id_col = find_customer_id_column(df)
 
-    exclude_columns = ["Buy_Label"]
+    exclude_columns = [column for column in TARGET_COLUMNS if column in df.columns]
     if customer_id_col:
         exclude_columns.append(customer_id_col)
 
@@ -109,7 +111,15 @@ def find_customer_id_column(df: pd.DataFrame) -> str | None:
 
 def train_model(x_train: pd.DataFrame, y_train: pd.Series) -> RandomForestClassifier:
     """RandomForestClassifier 모델을 학습합니다."""
-    model = RandomForestClassifier(random_state=42)
+    model = RandomForestClassifier(
+        n_estimators=300,
+        max_depth=8,
+        min_samples_split=40,
+        min_samples_leaf=20,
+        class_weight="balanced",
+        random_state=42,
+        n_jobs=-1,
+    )
     model.fit(x_train, y_train)
     return model
 
@@ -240,6 +250,12 @@ def select_marketing_targets_by_expected_profit(
     ]
     if customer_id_col:
         output_columns = [customer_id_col] + output_columns
+
+    scored_customers = working[output_columns].sort_values(
+        "Expected_Profit",
+        ascending=False,
+    )
+    scored_customers.to_csv(ALL_CUSTOMERS_PATH, index=False, encoding="utf-8-sig")
 
     return targets[output_columns]
 
