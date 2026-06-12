@@ -29,6 +29,8 @@ SALES_MODEL_PATH = PROJECT_ROOT / "models" / "product_sales_quantity_regressor.p
 CUSTOMER_CATEGORIES = ["Accessories", "Bikes", "Clothing"]
 FALLBACK_SALES_CATEGORIES = ["Accessories", "Bikes", "Clothing", "Components"]
 FALLBACK_PRODUCTS = ["Mountain-200 Black, 38"]
+ALL_CUSTOMERS_REPORT_PATH = PROJECT_ROOT / "outputs" / "reports" / "all_customers_expected_profit.csv"
+MARKETING_TARGETS_REPORT_PATH = PROJECT_ROOT / "outputs" / "reports" / "marketing_targets_expected_profit.csv"
 REGIONS = [
     "Australia",
     "Canada",
@@ -48,6 +50,143 @@ st.set_page_config(
     page_icon="",
     layout="wide",
 )
+
+
+def inject_dashboard_styles() -> None:
+    """Apply compact dashboard styling."""
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            padding-top: 3rem;
+            padding-bottom: 3rem;
+        }
+        div[data-testid="stMetric"] {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 14px 16px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+        div[data-testid="stMetricLabel"] p {
+            color: #64748b;
+            font-size: 0.86rem;
+        }
+        div[data-testid="stMetricValue"] {
+            color: #172033;
+            font-weight: 750;
+        }
+        .result-card {
+            border: 1px solid #e5e7eb;
+            border-left: 5px solid #ff4b4b;
+            border-radius: 8px;
+            padding: 18px 20px;
+            background: #ffffff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+            margin: 10px 0 16px 0;
+        }
+        .result-card strong {
+            display: block;
+            color: #172033;
+            font-size: 1.02rem;
+            margin-bottom: 6px;
+        }
+        .result-card span {
+            color: #64748b;
+            font-size: 0.92rem;
+        }
+        .section-note {
+            color: #64748b;
+            font-size: 0.92rem;
+            margin-top: -0.25rem;
+            margin-bottom: 1rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def format_compact_number(value: float) -> str:
+    """Format large dashboard numbers compactly."""
+    if abs(value) >= 1_000_000:
+        return f"{value / 1_000_000:.1f}M"
+    if abs(value) >= 1_000:
+        return f"{value / 1_000:.1f}K"
+    return f"{value:,.0f}"
+
+
+@st.cache_data
+def load_dashboard_summary() -> dict[str, str]:
+    """Load headline metrics from the expected-profit report."""
+    if not ALL_CUSTOMERS_REPORT_PATH.exists():
+        return {
+            "avg_probability": "-",
+            "avg_profit": "-",
+            "target_count": "-",
+            "best_profit": "-",
+        }
+
+    df = pd.read_csv(ALL_CUSTOMERS_REPORT_PATH)
+    if MARKETING_TARGETS_REPORT_PATH.exists():
+        target_count = len(pd.read_csv(MARKETING_TARGETS_REPORT_PATH, usecols=["CustomerKey"]))
+    else:
+        target_count = int((df["Expected_Profit"] > 0).sum())
+
+    return {
+        "avg_probability": f"{df['Purchase_Probability'].mean():.1%}",
+        "avg_profit": f"{format_compact_number(df['Expected_Profit'].mean())}",
+        "target_count": f"{target_count:,}",
+        "best_profit": f"{format_compact_number(df['Expected_Profit'].max())}",
+    }
+
+
+def render_dashboard_summary() -> None:
+    """Render top-level model summary metrics."""
+    summary = load_dashboard_summary()
+    first, second, third, fourth = st.columns(4)
+    first.metric("평균 구매확률", summary["avg_probability"])
+    second.metric("평균 기대이익", summary["avg_profit"])
+    third.metric("추천 대상 수", summary["target_count"])
+    fourth.metric("최고 기대이익", summary["best_profit"])
+
+
+def render_result_card(title: str, detail: str) -> None:
+    """Render a compact result callout."""
+    st.markdown(
+        f"""
+        <div class="result-card">
+            <strong>{title}</strong>
+            <span>{detail}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_probability_gauge(label: str, probability: float) -> None:
+    """Render a simple probability gauge."""
+    st.caption(label)
+    st.progress(max(0.0, min(1.0, probability)))
+    left, right = st.columns([1, 1])
+    left.caption("0%")
+    right.caption("100%")
+
+
+def render_customer_feature_chart(payload: dict[str, Any]) -> None:
+    """Show a small normalized RFM input snapshot."""
+    values = pd.Series(
+        {
+            "Recency": float(payload["Recency"]),
+            "Frequency": float(payload["Frequency"]),
+            "Monetary": float(payload["Monetary"]),
+            "Avg Order": float(payload["avg_order_amount"]),
+            "Quantity": float(payload["total_quantity"]),
+        }
+    )
+    normalized = values / values.max() if values.max() else values
+    st.caption("입력값 상대 비교")
+    st.bar_chart(normalized)
 
 
 def api_base_url() -> str:
@@ -198,6 +337,10 @@ def customer_payload(prefix: str = "") -> dict[str, Any]:
 def render_buy_tab() -> None:
     """Render the customer Buy/Not Buy prediction tab."""
     st.subheader("고객 구매 여부 예측")
+    st.markdown(
+        '<p class="section-note">고객의 RFM 정보와 선호 카테고리를 입력해 구매 가능성을 확인합니다.</p>',
+        unsafe_allow_html=True,
+    )
     payload = customer_payload("buy_")
 
     if st.button("구매 여부 예측하기", type="primary", key="buy_submit"):
@@ -205,11 +348,20 @@ def render_buy_tab() -> None:
         if not result:
             return
 
+        st.divider()
+        outcome = "구매 가능성이 높습니다" if result["label"] == "Buy" else "구매 가능성이 낮습니다"
+        render_result_card(outcome, translate_action(result["action"]))
+
         metric_left, metric_middle, metric_right = st.columns(3)
         metric_left.metric("예측 결과", "구매" if result["label"] == "Buy" else "비구매")
         metric_middle.metric("구매 확률", f"{result['probability']:.2%}")
         metric_right.metric("예측 클래스", result["prediction"])
-        st.info(translate_action(result["action"]))
+
+        gauge_col, chart_col = st.columns([1, 1])
+        with gauge_col:
+            render_probability_gauge("구매 확률 게이지", float(result["probability"]))
+        with chart_col:
+            render_customer_feature_chart(payload)
 
         matrix_info = result.get("confusion_matrix")
         if matrix_info:
@@ -235,6 +387,10 @@ def render_buy_tab() -> None:
 def render_sales_tab() -> None:
     """Render the product-region sales quantity prediction tab."""
     st.subheader("상품 / 지역별 판매량 예측")
+    st.markdown(
+        '<p class="section-note">월, 지역, 상품 정보를 기준으로 예상 판매량을 계산합니다.</p>',
+        unsafe_allow_html=True,
+    )
     sales_categories, products = load_sales_options()
     left, middle, right = st.columns(3)
     with left:
@@ -265,13 +421,25 @@ def render_sales_tab() -> None:
         result = predict("/predict/sales-quantity", payload)
         if not result:
             return
-        st.metric("예상 판매량", result["predicted_quantity"])
-        st.info(translate_action(result["action"]))
+
+        st.divider()
+        render_result_card(
+            "판매량 예측 완료",
+            translate_action(result["action"]),
+        )
+        first, second, third = st.columns(3)
+        first.metric("예상 판매량", f"{result['predicted_quantity']:,.2f}")
+        second.metric("지역", region)
+        third.metric("카테고리", category)
 
 
 def render_profit_tab() -> None:
     """Render the expected-profit CRM decision tab."""
     st.subheader("기대이익 기반 마케팅 대상 선정")
+    st.markdown(
+        '<p class="section-note">구매확률과 예상 구매금액에서 마케팅 비용을 차감해 실제 타깃 우선순위를 판단합니다.</p>',
+        unsafe_allow_html=True,
+    )
     payload = customer_payload("profit_")
     marketing_cost = st.number_input(
         "마케팅 비용",
@@ -286,11 +454,34 @@ def render_profit_tab() -> None:
         if not result:
             return
 
+        st.divider()
+        profitable = result["expected_profit"] > 0
+        render_result_card(
+            "마케팅 대상으로 추천" if profitable else "이번 캠페인에서는 제외 추천",
+            translate_action(result["action"]),
+        )
+
         first, second, third = st.columns(3)
         first.metric("구매 확률", f"{result['purchase_probability']:.2%}")
         second.metric("예상 구매 금액", f"{result['predicted_sales_amount']:,.2f}")
         third.metric("기대이익", f"{result['expected_profit']:,.2f}")
-        st.info(translate_action(result["action"]))
+
+        gauge_col, formula_col = st.columns([1, 1])
+        with gauge_col:
+            render_probability_gauge("구매 확률 게이지", float(result["purchase_probability"]))
+        with formula_col:
+            formula_df = pd.DataFrame(
+                {
+                    "항목": ["예상 매출 기여", "마케팅 비용", "기대이익"],
+                    "금액": [
+                        result["purchase_probability"] * result["predicted_sales_amount"],
+                        -result["marketing_cost"],
+                        result["expected_profit"],
+                    ],
+                }
+            )
+            st.caption("기대이익 구성")
+            st.bar_chart(formula_df, x="항목", y="금액")
 
 
 def translate_action(action: str) -> str:
@@ -333,9 +524,12 @@ def render_sidebar() -> None:
 
 def main() -> None:
     """Render the Streamlit dashboard."""
+    inject_dashboard_styles()
     st.title("CRM 예측 대시보드")
     st.caption("고객 구매 가능성, 기대이익, 상품 판매량 예측을 확인하는 대시보드")
     render_sidebar()
+    render_dashboard_summary()
+    st.divider()
 
     buy_tab, sales_tab, profit_tab = st.tabs(
         ["구매 여부 예측", "판매량 예측", "기대이익 분석"]
