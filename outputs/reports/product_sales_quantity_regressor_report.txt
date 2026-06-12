@@ -1,0 +1,9 @@
+Product Sales Quantity Regressor Report
+=============================================
+Goal: Predict monthly sales quantity by product/category and region
+Training rows: 26,794
+Feature count: 282
+
+MAE: 4.4518
+RMSE: 6.9225
+R2: 0.6578

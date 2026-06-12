@@ -1,0 +1,37 @@
+RandomForestClassifier Evaluation Report
+=============================================
+Accuracy: 1.0000
+Precision: 1.0000
+Recall: 1.0000
+F1-score: 1.0000
+
+Confusion Matrix
+[[2510    0]
+ [   0 1187]]
+
+CRM Marketing Budget Optimization
+=============================================
+Expected_Profit = Purchase_Probability * Predicted_Sales_Amount - Marketing_Cost
+Marketing_Cost: 5,000
+Marketing target count(top 20% by Expected_Profit): 3,696
+Average Expected_Profit among targets: -1,657.51
+Minimum Expected_Profit among targets: -4,809.18
+Maximum Expected_Profit among targets: 8,181.27
+
+Top 15 Feature Importance
+                      feature  importance
+                      Recency    0.581970
+               total_quantity    0.193384
+                    Frequency    0.160556
+                     Monetary    0.032668
+             avg_order_amount    0.022721
+        main_region_Australia    0.002154
+favorite_category_Accessories    0.001674
+   favorite_category_Clothing    0.001189
+      favorite_category_Bikes    0.000953
+           main_region_Canada    0.000643
+        main_region_Northwest    0.000626
+        main_region_Southwest    0.000601
+   main_region_United Kingdom    0.000296
+          main_region_Germany    0.000285
+           main_region_France    0.000237

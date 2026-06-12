@@ -1,0 +1,3 @@
+﻿strategy,target_count,avg_purchase_probability,avg_predicted_sales_amount,avg_expected_profit,total_expected_profit,positive_expected_profit_count,min_expected_profit,max_expected_profit,overlap_with_other_strategy
+Purchase Probability Top 20%,3696,1.0,2697.5076321469155,-2302.4923678530845,-8510011.791585,639,-4902.5216,8181.272181999986,3048
+Expected Profit Top 20%,3696,0.9885362554112554,3412.7316624315476,-1657.5078873608359,-6126149.1516856495,846,-4809.1758,8181.272181999986,3048

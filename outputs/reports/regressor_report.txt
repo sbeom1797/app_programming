@@ -1,0 +1,26 @@
+RandomForestRegressor Evaluation Report
+=============================================
+Goal: Predict customer-level expected purchase amount
+Target column: Monetary
+
+MAE: 6.2597
+RMSE: 65.7180
+R2: 0.9991
+
+Top 15 Feature Importance
+                      feature   importance
+             avg_order_amount 8.180307e-01
+                    Frequency 9.119423e-02
+               total_quantity 8.978147e-02
+                      Recency 5.142416e-04
+           main_region_France 2.562834e-04
+        main_region_Australia 6.579036e-05
+          main_region_Germany 5.817950e-05
+      favorite_category_Bikes 5.568014e-05
+   main_region_United Kingdom 2.433618e-05
+        main_region_Southwest 7.834417e-06
+favorite_category_Accessories 4.163249e-06
+   favorite_category_Clothing 3.186053e-06
+           main_region_Canada 2.124866e-06
+        main_region_Southeast 9.455749e-07
+        main_region_Northwest 8.150906e-07
